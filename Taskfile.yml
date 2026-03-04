@@ -1,0 +1,36 @@
+version: '3'
+
+vars:
+  BIN: ~/.garbell/garbell
+
+tasks:
+  build:
+    desc: Build and install the garbell binary to ~/.garbell/garbell
+    cmds:
+      - mkdir -p ~/.garbell
+      - go build -o {{.BIN}} ./cmd/garbell
+      - codesign -s - {{.BIN}} || true
+      - echo "Installed to {{.BIN}}"
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  install:
+    desc: Copy the skill into Claude and Gemini skills directories
+    cmds:
+      - mkdir -p ~/.claude/skills
+      - rm -rf ~/.claude/skills/garbell
+      - cp -r ./skills ~/.claude/skills/garbell
+      - mkdir -p ~/.gemini/skills
+      - rm -rf ~/.gemini/skills/garbell
+      - cp -r ./skills ~/.gemini/skills/garbell
+      - echo "Installed skill to ~/.claude/skills/garbell and ~/.gemini/skills/garbell"
+
+  zip:
+    desc: Create a release zip
+    cmds:
+      - rm -f garbell.zip
+      - zip -r garbell.zip . -x ".git/*" -x "*.zip"
+      - echo "Created garbell.zip"
