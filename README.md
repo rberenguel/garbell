@@ -33,6 +33,8 @@ The right unit is the **chunk** — a function, a class, a heading section — a
 
 The same principle applies when results would be too large: instead of truncating, `garbell` returns a directory-grouped summary — symbol counts per folder, file lists — so the agent knows exactly where to drill next rather than getting a wall of partial output. Progressive disclosure is the name of the game, after all.
 
+This is an evolution of the RLM-like approach I explored in [cercle](https://github.com/rberenguel/cercle). Cercle uses SQLite with BM25 similarity fuzziness and GloVe averaging to provide semantic search, all with a persistent daemon. It sounds cool, it is cool, but there are too many moving pieces.
+
 ---
 
 ## Commands
@@ -161,6 +163,7 @@ In practice, agents invoke `garbell` through the skill — they never need to kn
 
 ## Acknowledgements
 
-- [ripgrep](https://github.com/BurntSushi/ripgrep) — the engine behind lexical search and file discovery
-- [Claude](https://claude.ai) — primary client and co-author; wrote most of this, used it on itself, noticed the context savings
-- [Gemini](https://gemini.google.com) — contributed to the original cercle architecture this tool grew out of
+- [ripgrep](https://github.com/BurntSushi/ripgrep) — the engine behind lexical search and file discovery.
+- [Claude](https://claude.ai) — primary client and co-author; wrote most of this, used it on itself, noticed the context savings.
+- [Antigravity](https://antigravity.google/) — co-author of the initial [cercle](https://github.com/rberenguel/cercle) architecture, wrote the REPL here.
+- [Gemini](https://gemini.google.com) — contributed to the original [cercle](https://github.com/rberenguel/cercle) architecture this tool grew out of. Icon, too.
