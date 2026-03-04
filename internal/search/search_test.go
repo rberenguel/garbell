@@ -100,7 +100,7 @@ func TestMain(m *testing.M) {
 	// Suppress GenerateIndex stdout during tests.
 	old := os.Stdout
 	os.Stdout, _ = os.Open(os.DevNull)
-	err = indexer.GenerateIndex(dir)
+	_, err = indexer.GenerateIndex(dir)
 	os.Stdout = old
 	if err != nil {
 		panic(err)

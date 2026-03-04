@@ -9,6 +9,7 @@ import (
 
 	"garbell/internal/indexer"
 	"garbell/internal/search"
+	"garbell/internal/tui"
 )
 
 func main() {
@@ -28,7 +29,7 @@ func main() {
 
 	switch command {
 	case "index":
-		if err := indexer.GenerateIndex(workspacePath); err != nil {
+		if _, err := indexer.GenerateIndex(workspacePath); err != nil {
 			fmt.Printf("Error generating index: %v\n", err)
 			os.Exit(1)
 		}
@@ -187,6 +188,13 @@ func main() {
 		}
 		for _, r := range results {
 			fmt.Println(r)
+		}
+
+	case "repl":
+		r := tui.New()
+		if err := r.Run(); err != nil {
+			fmt.Printf("REPL error: %v\n", err)
+			os.Exit(1)
 		}
 
 	default:

@@ -1,4 +1,4 @@
-# Cercle v2 Reference
+# Garbell Reference
 
 `garbell` is a local, daemonless CLI tool for indexing and searching codebases. It is designed to give LLM agents (and developers) structured access to code without reading whole files into context.
 
@@ -29,6 +29,7 @@ Each command answers a distinct question about a codebase:
 | *Where is the complexity?* | `largest-chunks [n]` |
 | *What does this call?* | `callees <file> <line>` |
 | *What imports this?* | `dependents <file>` |
+| *Interactive exploration?* | `repl` |
 
 `index` is a prerequisite for all of the above.
 
@@ -249,6 +250,42 @@ garbell dependents src/auth/token.go
 src/auth/login.go:3: "myproject/src/auth"
 src/middleware/auth.go:5: "myproject/src/auth"
 src/api/routes.go:8: "myproject/src/auth"
+```
+
+---
+
+### `repl`
+
+Opens an interactive Read-Eval-Print Loop (REPL) for exploring the workspace. The REPL includes history (up/down arrow keys), cursor navigation, and tab completion for both commands and file paths using the codebase index.
+
+Within the REPL, commands have shorthand aliases to save typing:
+
+| Shorthand | Full Command |
+|---|---|
+| `fs <path>` | `file-skeleton` |
+| `rc <file> <line>` | `read-chunk` |
+| `sl <query>` | `search-lexical` |
+| `fu <symbol>` | `find-usages` |
+| `ei <file>` | `extract-interface` |
+| `ss <pattern>` | `search-signature` |
+| `lc [n]` | `largest-chunks` |
+| `ca <file> <line>` | `callees` |
+| `dep <file>` | `dependents` |
+| `sf <sig>` | `search-fuzzy` |
+
+Other REPL-specific commands:
+- `use <path>`: Sets the workspace directory and loads its index for tab completion.
+- `index`: Regenerates the index for the current workspace.
+- `help` / `?`: Prints the command list.
+- `exit` / `q` / `Ctrl+D`: Quits the REPL.
+
+*Example workflow:*
+```bash
+garbell repl
+garbell (no workspace)> use /path/to/project
+garbell (project)> fs src/auth/            # Press Tab to auto-complete paths
+garbell (project)> rl src/auth/login.go 25
+garbell (project)> exit
 ```
 
 ---

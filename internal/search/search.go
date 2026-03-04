@@ -215,6 +215,8 @@ func ExtractInterface(workspacePath, relFilePath string, language string) (strin
 
 	importCpp := regexp.MustCompile(`^#include\s+`)
 
+	markdownHeader := regexp.MustCompile(`^#{1,6}\s+`)
+
 	for scanner.Scan() {
 		text := strings.TrimSpace(scanner.Text())
 		if text == "" {
@@ -231,6 +233,8 @@ func ExtractInterface(workspacePath, relFilePath string, language string) (strin
 			match = importJs.MatchString(text) || exportJs.MatchString(text)
 		case ".cpp", ".hpp", ".h", ".c":
 			match = importCpp.MatchString(text) // simplifying C++ to just headers
+		case ".md", ".mdx":
+			match = markdownHeader.MatchString(text)
 		default:
 			match = true // print all if unsupported
 		}

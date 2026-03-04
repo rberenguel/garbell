@@ -19,18 +19,18 @@ import (
 
 // SupportedExtensions defines the file extensions the chunker currently understands.
 var SupportedExtensions = map[string]bool{
-	".go":   true,
-	".py":   true,
-	".js":   true,
-	".ts":   true,
-	".jsx":  true,
-	".tsx":  true,
-	".c":    true,
-	".cpp":  true,
-	".cc":   true,
-	".cxx":  true,
-	".h":    true,
-	".hpp":  true,
+	".go":    true,
+	".py":    true,
+	".js":    true,
+	".ts":    true,
+	".jsx":   true,
+	".tsx":   true,
+	".c":     true,
+	".cpp":   true,
+	".cc":    true,
+	".cxx":   true,
+	".h":     true,
+	".hpp":   true,
 	".css":   true,
 	".html":  true,
 	".htm":   true,
@@ -41,15 +41,17 @@ var SupportedExtensions = map[string]bool{
 
 // GenerateIndex traverses the given directory using rg, parses the supported
 // source files, and writes the chunk maps into the global ~/.garbell/indexes/ location.
-func GenerateIndex(dir string) error {
+// It returns the total elapsed duration of the operation.
+func GenerateIndex(dir string) (time.Duration, error) {
+	start := time.Now()
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	files, err := discoverFiles(absDir)
 	if err != nil {
-		return fmt.Errorf("failed to discover files: %w", err)
+		return 0, fmt.Errorf("failed to discover files: %w", err)
 	}
 
 	fmt.Printf("Parsed %d files to index...\n", len(files))
@@ -97,7 +99,8 @@ func GenerateIndex(dir string) error {
 	wg.Wait()
 
 	// Write shards to disk
-	return writeShards(absDir, shardMap)
+	err = writeShards(absDir, shardMap)
+	return time.Since(start), err
 }
 
 // GetShardID computes the first two characters of the md5 hash of a relative filepath

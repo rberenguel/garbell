@@ -1,5 +1,5 @@
 <div align="center">
-<img src="garbell.png" alt="garbell" width="160">
+<img src="media/garbell.png" alt="garbell" width="160">
 
 # garbell
 
@@ -8,6 +8,8 @@
 *Progressive disclosure for code exploration.*
 
 </div>
+
+> **garbell** (*n., Catalan*) — A sieve; a mesh tool used to separate fine matter from coarse, or to strain impurities from a substance. From Old Occitan *garbell*, related to Arabic *ghirbāl*. Used in mining to separate gold from sediment.
 
 A local, daemonless CLI tool that gives LLM agents structured access to codebases — without reading whole files into context.
 
@@ -29,7 +31,7 @@ The right unit is the **chunk** — a function, a class, a heading section — a
 2. **Zoom** — `read-chunk <file> <line>` returns exactly the chunk enclosing that line. The agent pays only for what it reads.
 3. **Search** — `search-lexical <query>` uses ripgrep under the hood but returns the **full function body** surrounding each match — not just the matching line.
 
-The same principle applies when results would be too large: instead of truncating, `garbell` returns a directory-grouped summary — symbol counts per folder, file lists — so the agent knows exactly where to drill next rather than getting a wall of partial output.
+The same principle applies when results would be too large: instead of truncating, `garbell` returns a directory-grouped summary — symbol counts per folder, file lists — so the agent knows exactly where to drill next rather than getting a wall of partial output. Progressive disclosure is the name of the game, after all.
 
 ---
 
@@ -49,12 +51,21 @@ Each command answers a distinct question:
 | *What does this call?* | `callees <file> <line>` |
 | *What imports this?* | `dependents <file>` |
 | *What is this called, roughly?* | `search-fuzzy <sig>` |
+| *Human interactive exploration?* | `repl` |
 
 Full reference: [`REFERENCE.md`](REFERENCE.md).
 
 ---
 
-## Evaluation
+## Interactive exploration
+
+When exploring a new codebase natively, running `garbell repl` gives you (you = human) a snappy Read-Eval-Print Loop. The REPL includes history (up/down arrow keys), cursor navigation, and lightning-fast tab completion for both commands and file paths using the local index. You can see what the LLM sees.
+
+<img src="media/garbell-repl.png" alt="garbell repl" width="600">
+
+---
+
+## "Evaluation"
 
 A real-world test on a ~60-file, ~134K-line JavaScript codebase ([destrier](https://github.com/rberenguel/destrier)). The agent was asked to implement a full two-player versus mode from scratch. Context window remaining was measured at two natural milestones:
 
@@ -93,7 +104,7 @@ All commands that can return large outputs check a line threshold (default: 500,
 
 ---
 
-## Supported languages
+## Supported "languages"
 
 | Extension | Parser | Extracts |
 |---|---|---|
@@ -140,7 +151,7 @@ In practice, agents invoke `garbell` through the skill — they never need to kn
 
 ---
 
-## Known limitations
+## Known limitations / future improvements
 
 - **Module-scope lines** — `read-chunk` returns an error for lines not inside a function or class (imports, top-level constants). Use `extract-interface` for the public surface, or read the file directly.
 - **Missing languages** — Rust, Java, Ruby, Swift are not currently supported.
