@@ -5,11 +5,11 @@
 
 ![Work in progress](https://img.shields.io/badge/status-work%20in%20progress-red)
 
-*Progressive disclosure for code exploration.*
+_Progressive disclosure for code exploration._
 
 </div>
 
-> **garbell** (*n., Catalan*) — A sieve; a mesh tool used to separate fine matter from coarse, or to strain impurities from a substance. From Old Occitan *garbell*, related to Arabic *ghirbāl*. Used in mining to separate gold from sediment.
+> **garbell** (_n., Catalan_) — A sieve; a mesh tool used to separate fine matter from coarse, or to strain impurities from a substance. From Old Occitan _garbell_, related to Arabic _ghirbāl_. Used in mining to separate gold from sediment.
 
 A local, daemonless CLI tool that gives LLM agents structured access to codebases — without reading whole files into context.
 
@@ -21,7 +21,7 @@ An agent exploring an unfamiliar codebase will reach for files. But files are th
 
 > When I hit an unfamiliar file, my instinct is to read the whole thing. That's expensive, and I usually only needed one function out of it.
 >
-> — *Claude Sonnet 4.6, during development of this tool*
+> — _Claude Sonnet 4.6, during development of this tool_
 
 The right unit is the **chunk** — a function, a class, a heading section — and the right strategy is **progressive disclosure**: expose structure first, let the agent zoom into only what matters.
 
@@ -41,19 +41,20 @@ This is an evolution of the RLM-like approach I explored in [cercle](https://git
 
 Each command answers a distinct question:
 
-| Question | Command |
-|---|---|
-| *What exists and where?* | `file-skeleton <path\|dir>` |
-| *What does this do?* | `read-chunk <file> <line>` |
-| *Where is X mentioned?* | `search-lexical <query>` |
-| *Who calls this?* | `find-usages <symbol>` |
-| *What does this expose?* | `extract-interface <file>` |
-| *What has this shape/signature?* | `search-signature <pattern>` |
-| *Where is the complexity?* | `largest-chunks [n]` |
-| *What does this call?* | `callees <file> <line>` |
-| *What imports this?* | `dependents <file>` |
-| *What is this called, roughly?* | `search-fuzzy <sig>` |
-| *Human interactive exploration?* | `repl` |
+| Question                             | Command                      |
+| ------------------------------------ | ---------------------------- |
+| _What exists and where?_             | `file-skeleton <path\|dir>`  |
+| _What does this do?_                 | `read-chunk <file> <line>`   |
+| _Where is X mentioned?_              | `search-lexical <query>`     |
+| _Who calls this?_                    | `find-usages <symbol>`       |
+| _What does this expose?_             | `extract-interface <file>`   |
+| _What has this shape/signature?_     | `search-signature <pattern>` |
+| _Where is the complexity?_           | `largest-chunks [n]`         |
+| _What does this call?_               | `callees <file> <line>`      |
+| _What imports this?_                 | `dependents <file>`          |
+| _What is this called, roughly?_      | `search-fuzzy <sig>`         |
+| _What is conceptually related to X?_ | `search-related <query>`     |
+| _Human interactive exploration?_     | `repl`                       |
 
 Full reference: [`REFERENCE.md`](REFERENCE.md).
 
@@ -71,10 +72,10 @@ When exploring a new codebase natively, running `garbell repl` gives you (you = 
 
 A real-world test on a ~60-file, ~134K-line JavaScript codebase ([destrier](https://github.com/rberenguel/destrier)). The agent was asked to implement a full two-player versus mode from scratch. Context window remaining was measured at two natural milestones:
 
-| Approach | After exploration | After planning |
-|:---|:---:|:---:|
-| **garbell** | 59% | 47% |
-| **Vanilla** (native file reads) | 41% | 38% |
+| Approach                        | After exploration | After planning |
+| :------------------------------ | :---------------: | :------------: |
+| **garbell**                     |        59%        |      47%       |
+| **Vanilla** (native file reads) |        41%        |      38%       |
 
 ~20% more context preserved heading into the design phase. The gap comes almost entirely from `file-skeleton` + `read-chunk`: instead of reading whole files, the agent reads signatures first and pays for only the chunks it needs.
 
@@ -82,7 +83,7 @@ A real-world test on a ~60-file, ~134K-line JavaScript codebase ([destrier](http
 >
 > **Bottom line:** For a codebase of this size, it probably saved 30–40% context vs naive file reading.
 >
-> — *Claude Sonnet 4.6, post-task assessment*
+> — _Claude Sonnet 4.6, post-task assessment_
 
 ---
 
@@ -100,6 +101,8 @@ Chunks are written as sharded JSON into `~/.garbell/indexes/<workspace-hash>/`. 
 
 Lexical search delegates to `rg` for the raw match, then looks up the surrounding chunk in the index to return the full body. Fuzzy search uses pure-Go Levenshtein distance against the signature vocabulary. Everything else reads directly from the index shards — no file I/O.
 
+Semantic search is a layer on top of lexical search. During indexing, `garbell` builds a repository-specific thesaurus using Positive Pointwise Mutual Information (PPMI): it tracks how often pairs of tokens co-occur across the codebase and distils the top 5 related terms for each. At query time, `search-related` tokenises the query, expands it with those related terms, and passes the resulting alternation regex to `search-lexical`. No embeddings, no model, no network — the thesaurus is a small `ppmi.json` file alongside the chunk shards.
+
 ### Progressive disclosure threshold
 
 All commands that can return large outputs check a line threshold (default: 500, override with `GARBELL_MAX_LINES=n`). When output would exceed it, the command returns a directory-grouped summary with symbol counts and file lists, so the agent can narrow its query or drill into a specific location.
@@ -108,16 +111,16 @@ All commands that can return large outputs check a line threshold (default: 500,
 
 ## Supported "languages"
 
-| Extension | Parser | Extracts |
-|---|---|---|
-| `.go` | Heuristic (brace counting) | `func`, `type` |
-| `.py` | Heuristic (indentation) | `def`, `class`, `async def` |
-| `.js` `.ts` `.jsx` `.tsx` | Heuristic (brace stack) | `function`, `class`, arrow functions |
-| `.c` `.cpp` `.cc` `.cxx` `.h` `.hpp` | Heuristic (brace counting) | function definitions, `class`, `struct` |
-| `.css` | Heuristic (brace counting) | rules/selectors |
-| `.html` `.htm` | Tag matching | `<script>`, `<style>`, `<main>`, `<div id=...>` |
-| `.md` `.mdx` | Heading-based | ATX headings — each section is one chunk |
-| `.proto` | Heuristic (brace counting) | `message`, `service`, `enum` |
+| Extension                            | Parser                     | Extracts                                        |
+| ------------------------------------ | -------------------------- | ----------------------------------------------- |
+| `.go`                                | Heuristic (brace counting) | `func`, `type`                                  |
+| `.py`                                | Heuristic (indentation)    | `def`, `class`, `async def`                     |
+| `.js` `.ts` `.jsx` `.tsx`            | Heuristic (brace stack)    | `function`, `class`, arrow functions            |
+| `.c` `.cpp` `.cc` `.cxx` `.h` `.hpp` | Heuristic (brace counting) | function definitions, `class`, `struct`         |
+| `.css`                               | Heuristic (brace counting) | rules/selectors                                 |
+| `.html` `.htm`                       | Tag matching               | `<script>`, `<style>`, `<main>`, `<div id=...>` |
+| `.md` `.mdx`                         | Heading-based              | ATX headings — each section is one chunk        |
+| `.proto`                             | Heuristic (brace counting) | `message`, `service`, `enum`                    |
 
 Files with unrecognized extensions are skipped. Files of supported types that produce no chunks and are longer than 50 lines fall back to overlapping 50-line sliding windows.
 

@@ -41,7 +41,7 @@ func TestComplete(t *testing.T) {
 	}
 
 	matches, prefix = r.complete("s")
-	expected := []string{"sf", "sl", "ss"}
+	expected := []string{"sf", "sl", "sr", "ss"}
 	if !reflect.DeepEqual(matches, expected) || prefix != "s" {
 		t.Errorf("expected %v, 's', got %v, %v", expected, matches, prefix)
 	}

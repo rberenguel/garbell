@@ -266,6 +266,69 @@ func TestJSParser_Class(t *testing.T) {
 	}
 }
 
+func TestJSParser_InlineArrowFunction(t *testing.T) {
+	// Single-line arrow: chunk is captured and sig does not include the body.
+	src := `const double = (x) => { return x * 2; };
+`
+	path := writeTempFile(t, src, ".js")
+	chunks, err := chunker.ParseFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+	if chunks[0].Sig != "const double = (x) =>" {
+		t.Errorf("unexpected sig: %q", chunks[0].Sig)
+	}
+	if chunks[0].Start != 1 || chunks[0].End != 1 {
+		t.Errorf("expected lines 1-1, got %d-%d", chunks[0].Start, chunks[0].End)
+	}
+}
+
+func TestJSParser_ExpressionBodyArrow(t *testing.T) {
+	// Expression-body arrow (no braces) must not pollute the stack.
+	// It produces no chunk (no block body to index), and must not cause
+	// the next closing brace in the file to be mis-attributed.
+	src := `const double = x => x * 2;
+
+function greet(name) {
+    return "Hello, " + name;
+}
+`
+	path := writeTempFile(t, src, ".js")
+	chunks, err := chunker.ParseFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the function declaration should produce a chunk.
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d: %+v", len(chunks), chunks)
+	}
+	if chunks[0].Sig != "function greet(name)" {
+		t.Errorf("unexpected sig: %q", chunks[0].Sig)
+	}
+}
+
+func TestJSParser_TypedArrowFunction(t *testing.T) {
+	// TypeScript arrow with a return type annotation: const f = (a: string): string => {
+	src := `const greet = (name: string): string => {
+    return "Hello, " + name;
+};
+`
+	path := writeTempFile(t, src, ".ts")
+	chunks, err := chunker.ParseFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d: %+v", len(chunks), chunks)
+	}
+	if chunks[0].Sig != "const greet = (name: string): string =>" {
+		t.Errorf("unexpected sig: %q", chunks[0].Sig)
+	}
+}
+
 func TestJSParser_TSExtension(t *testing.T) {
 	src := `function hello(): string {
     return "world";

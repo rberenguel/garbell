@@ -190,6 +190,24 @@ func main() {
 			fmt.Println(r)
 		}
 
+	case "search-related":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: garbell search-related <query>")
+			os.Exit(1)
+		}
+		query := os.Args[2]
+		bodies, err := search.SearchRelated(workspacePath, query)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		for i, body := range bodies {
+			fmt.Println(strings.TrimSpace(body))
+			if i < len(bodies)-1 {
+				fmt.Println("---")
+			}
+		}
+
 	case "repl":
 		r := tui.New()
 		if err := r.Run(); err != nil {
@@ -219,4 +237,5 @@ func printUsage() {
 	fmt.Println("  largest-chunks [n]                     Show the n largest chunks by line count (default 10)")
 	fmt.Println("  callees <filepath> <line_number>       Show functions called by the chunk at this line")
 	fmt.Println("  dependents <filepath>                  Show files that import this file")
+	fmt.Println("  search-related <query>                 PPMI co-occurrence expansion + lexical search")
 }

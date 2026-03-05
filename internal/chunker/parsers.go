@@ -130,7 +130,7 @@ type jsParser struct {
 
 var (
 	jsFuncRegex   = regexp.MustCompile(`^\s*(?:export\s+)?(?:async\s+)?function\s+\w+`)
-	jsConstRegex  = regexp.MustCompile(`^\s*(?:export\s+)?(?:const|let|var)\s+\w+\s*=\s*(?:async\s+)?(?:\(.*?\)|\w+)\s*=>`)
+	jsConstRegex  = regexp.MustCompile(`^\s*(?:export\s+)?(?:const|let|var)\s+\w+\s*=\s*(?:async\s+)?(?:\(.*?\)|\w+)[^{]*=>`)
 	jsClassRegex  = regexp.MustCompile(`^\s*(?:export\s+)?class\s+\w+`)
 	jsMethodRegex = regexp.MustCompile(`^\s*(?:async\s+)?\w+\s*\([^)]*\)\s*\{`)
 )
@@ -139,9 +139,17 @@ func (p *jsParser) processLine(filePath string, lineNum int, lineText string) []
 	var completed []models.Chunk
 	trimmed := strings.TrimSpace(lineText)
 
-	if jsFuncRegex.MatchString(trimmed) || jsConstRegex.MatchString(trimmed) || jsClassRegex.MatchString(trimmed) || jsMethodRegex.MatchString(trimmed) {
-		sig := strings.TrimSuffix(trimmed, "{")
-		sig = strings.TrimSpace(sig)
+	isChunkStart := (jsFuncRegex.MatchString(trimmed) || jsConstRegex.MatchString(trimmed) ||
+		jsClassRegex.MatchString(trimmed) || jsMethodRegex.MatchString(trimmed)) &&
+		strings.Contains(trimmed, "{")
+
+	if isChunkStart {
+		// Extract sig: everything before the opening brace, so inline bodies
+		// (e.g. const f = (x) => { return x }) don't end up in the signature.
+		sig := trimmed
+		if idx := strings.Index(trimmed, "{"); idx >= 0 {
+			sig = strings.TrimSpace(trimmed[:idx])
+		}
 
 		p.stack = append(p.stack, jsChunkInfo{
 			startLine:  lineNum,

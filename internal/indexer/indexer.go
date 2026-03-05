@@ -15,6 +15,7 @@ import (
 
 	"garbell/internal/chunker"
 	"garbell/internal/models"
+	"garbell/internal/semantic"
 )
 
 // SupportedExtensions defines the file extensions the chunker currently understands.
@@ -61,6 +62,8 @@ func GenerateIndex(dir string) (time.Duration, error) {
 	var mapMutex sync.Mutex
 	var wg sync.WaitGroup
 
+	semBuilder := semantic.NewBuilder()
+
 	// Use a semaphore to limit concurrency
 	sem := make(chan struct{}, 10)
 
@@ -74,6 +77,28 @@ func GenerateIndex(dir string) (time.Duration, error) {
 			chunks, err := chunker.ParseFile(f)
 			if err != nil || len(chunks) == 0 {
 				return
+			}
+
+			// Feed each chunk's lines into the semantic builder independently,
+			// so co-occurrences are measured within function/class boundaries.
+			// Markdown and HTML are excluded: their prose and illustrative examples
+			// pollute the thesaurus with associations that don't reflect real code structure.
+			ext := strings.ToLower(filepath.Ext(f))
+			if ext != ".md" && ext != ".mdx" && ext != ".html" && ext != ".htm" {
+				if content, readErr := os.ReadFile(f); readErr == nil {
+					lines := strings.Split(string(content), "\n")
+					for _, chunk := range chunks {
+						start := chunk.Start - 1
+						end := chunk.End
+						if start < 0 {
+							start = 0
+						}
+						if end > len(lines) {
+							end = len(lines)
+						}
+						semBuilder.AddDocument(strings.Join(lines[start:end], "\n"))
+					}
+				}
 			}
 
 			// Calculate shard ID
@@ -99,8 +124,17 @@ func GenerateIndex(dir string) (time.Duration, error) {
 	wg.Wait()
 
 	// Write shards to disk
-	err = writeShards(absDir, shardMap)
-	return time.Since(start), err
+	if err = writeShards(absDir, shardMap); err != nil {
+		return time.Since(start), err
+	}
+
+	// Build and persist the PPMI thesaurus alongside the shards.
+	thesaurus := semBuilder.BuildThesaurus(5)
+	if err = writeThesaurus(absDir, thesaurus); err != nil {
+		fmt.Printf("Warning: could not write ppmi.json: %v\n", err)
+	}
+
+	return time.Since(start), nil
 }
 
 // GetShardID computes the first two characters of the md5 hash of a relative filepath
@@ -175,4 +209,25 @@ func writeShards(absDir string, shardMap map[string][]models.Chunk) error {
 
 	fmt.Printf("Successfully wrote %d shards to %s\n", len(shardMap), indexPath)
 	return nil
+}
+
+func writeThesaurus(absDir string, thesaurus map[string][]string) error {
+	if len(thesaurus) == 0 {
+		return nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	dirHashBytes := md5.Sum([]byte(absDir))
+	dirHash := hex.EncodeToString(dirHashBytes[:])
+	ppmiPath := filepath.Join(home, ".garbell", "indexes", dirHash, "ppmi.json")
+
+	data, err := json.Marshal(thesaurus)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(ppmiPath, data, 0644)
 }

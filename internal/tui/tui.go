@@ -425,6 +425,28 @@ func (r *REPL) execute(input string) {
 			fmt.Println("No matches found.")
 		}
 
+	case "sr":
+		if r.workspace == "" {
+			fmt.Println("No workspace set.")
+			return
+		}
+		if len(args) < 2 {
+			fmt.Println("Usage: sr <query>")
+			return
+		}
+		query := strings.Join(args[1:], " ")
+		bodies, err := search.SearchRelated(r.workspace, query)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+		for i, body := range bodies {
+			fmt.Println(strings.TrimSpace(body))
+			if i < len(bodies)-1 {
+				fmt.Println("---")
+			}
+		}
+
 	case "help", "?":
 		if len(args) > 1 {
 			printCommandHelp(args[1])
@@ -442,7 +464,8 @@ func (r *REPL) execute(input string) {
 		fmt.Println("  lc [n]             largest-chunks")
 		fmt.Println("  ca <file> <line>   callees")
 		fmt.Println("  dep <file>         dependents")
-		fmt.Println("  sf <sig>           search-fuzzy")
+		fmt.Println("  sf <sig>           search-fuzzy (Levenshtein signature match)")
+		fmt.Println("  sr <query>         search-related (PPMI co-occurrence expansion → lexical)")
 		fmt.Println("  exit, q            Quit REPL")
 		fmt.Println("Type 'help <command>' for more info.")
 
@@ -481,6 +504,8 @@ func printCommandHelp(cmd string) {
 		fmt.Println("dep <filepath>\n  Finds all files in the workspace that import or reference the given file.")
 	case "sf", "search-fuzzy":
 		fmt.Println("sf <signature>\n  Finds the closest matching function signature in the index using Levenshtein distance.")
+	case "sr", "search-related":
+		fmt.Println("sr <query>\n  Expands the query with co-occurring terms from the PPMI thesaurus built during 'index',\n  then runs an expanded lexical search. Useful for finding code related to a known term.")
 	case "help", "?":
 		fmt.Println("help [command]\n  Shows this help message. Pass a command to see details.")
 	case "exit", "q":
@@ -498,7 +523,7 @@ func (r *REPL) refreshPaths() {
 	r.paths = paths
 }
 
-var commands = []string{"use", "index", "fs", "rc", "sl", "fu", "ei", "ss", "lc", "ca", "dep", "sf", "help", "exit", "q", "?"}
+var commands = []string{"use", "index", "fs", "rc", "sl", "fu", "ei", "ss", "lc", "ca", "dep", "sf", "sr", "help", "exit", "q", "?"}
 
 func (r *REPL) complete(input string) ([]string, string) {
 	// First check if workspace is loaded at all
