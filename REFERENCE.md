@@ -117,7 +117,7 @@ Use this after `file-skeleton` tells you the line range of the thing you want to
 
 ### `search-lexical <query>`
 
-Runs `rg -n -e <query>` across the workspace, maps every match to its enclosing chunk, deduplicates, and returns the full function/class body for each. Each chunk is capped at 100 lines.
+Runs `rg -n -e <query>` across the workspace, maps every match to its enclosing chunk, deduplicates, and returns a **compact grouped-by-file listing** — one line per matching chunk showing its line range and signature. Use `read-chunk <file> <line>` to read the full body of any listed chunk.
 
 The query is a **PCRE/Rust regex** — `|` alternation works directly, no escaping:
 
@@ -127,19 +127,22 @@ garbell search-lexical "SELECT.*FROM users"
 garbell search-lexical "func.*Error\(\)"
 ```
 
-When the total estimated output would exceed the line threshold, a directory-grouped overview is returned instead:
+Example output:
 
 ```
-Results exceed 500 lines (~18 chunks across 9 files). Drill down by location:
+src/auth/login.go:
+  12-58: func handleLogin(w http.ResponseWriter, r *http.Request)
+  60-89: func handleLogout(w http.ResponseWriter, r *http.Request)
 
-  src/auth/                            6 chunk(s)  [login.go, session.go, token.go]
-  src/models/                          5 chunk(s)  [user.go, session.go]
-  ...
+src/middleware/auth.go:
+  5-30: func requireAuth(next http.Handler) http.Handler
 
-Refine your query, add a path, or use `file-skeleton <dir>` to explore.
+Use `read-chunk <file> <line>` to read any chunk's full body.
 ```
 
-To search within a specific directory, use a path-anchored regex: `garbell search-lexical "handleLogin" src/auth/` — actually, pass the path as part of the query or use `rg` flags. The current interface only takes a query string; for path filtering run `rg` directly or narrow the query.
+When more than 80 chunks match, a directory-grouped overview is returned instead — narrow your query or use `file-skeleton` to explore.
+
+To search within a specific directory, pass the path as part of the query pattern or run `rg` directly for path filtering.
 
 ---
 
@@ -151,7 +154,7 @@ An expanded search that uses the repository-specific **PPMI thesaurus** built du
 
 1. The query is tokenised the same way the codebase was during indexing — split on non-alphanumeric boundaries and camelCase transitions, lowercased, stop-words removed.
 2. Each token is looked up in the `ppmi.json` thesaurus. The thesaurus maps every token to the top 5 terms that co-occur with it most strongly across the whole codebase (measured by Positive Pointwise Mutual Information, a log-ratio of observed vs. expected co-occurrence frequency).
-3. The original tokens and all their synonyms are combined into a single case-insensitive alternation regex — e.g. `(?i)(login|auth|session|jwt|token)` — and passed to `search-lexical`.
+3. Two searches are run: one with the original tokens, one with synonym-only terms. Results are merged with original-query matches ranked first (higher relevance), capped at 50 chunks total.
 
 **When to use it:**
 
@@ -172,7 +175,7 @@ garbell search-related "database connection"
 # Might expand to: (?i)(database|connection|pool|driver|query|transaction)
 ```
 
-The output format is identical to `search-lexical` — full chunk bodies, capped at 100 lines each, with the same progressive-disclosure threshold.
+The output format is identical to `search-lexical` — a compact grouped-by-file chunk listing. Use `read-chunk` to read specific bodies.
 
 > **Requires `ppmi.json`** — produced by `garbell index`. If the file is missing, the command returns an error asking you to re-run `index`.
 
@@ -397,7 +400,7 @@ This is not pagination. The summary is a genuinely different, denser representat
 
 | Full output exceeded  | What you get instead                 | Next step                                           |
 | --------------------- | ------------------------------------ | --------------------------------------------------- |
-| `search-lexical`      | Dirs with chunk counts + file names  | Narrow the query or drill into a specific dir       |
+| `search-lexical`      | Dirs with chunk counts + file names  | Narrow the query or use `file-skeleton` on a dir    |
 | `file-skeleton <dir>` | Dirs with file/symbol counts         | Run `file-skeleton` on a specific subdir            |
 | `find-usages`         | Dirs with caller counts + file names | Use `read-chunk` on files in the dir you care about |
 
@@ -406,10 +409,14 @@ The summary messages always include a hint about what to do next.
 ### Adjusting the threshold
 
 ```bash
-# Temporarily raise the limit (e.g., bigger context window)
-GARBELL_MAX_LINES=2000 garbell search-lexical "authenticate"
+# Raise the search-lexical chunk cap (default 80)
+GARBELL_MAX_SUMMARY_CHUNKS=200 garbell search-lexical "authenticate"
 
 # Lower it for a smaller context budget
+GARBELL_MAX_SUMMARY_CHUNKS=20 garbell search-lexical "authenticate"
+
+# Adjust file-skeleton / find-usages line threshold (default 500)
+GARBELL_MAX_LINES=2000 garbell file-skeleton src/
 GARBELL_MAX_LINES=200 garbell file-skeleton src/
 ```
 

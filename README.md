@@ -3,6 +3,7 @@
 
 # garbell
 
+![Version](https://img.shields.io/badge/version-0.0.3-blue)
 ![Work in progress](https://img.shields.io/badge/status-work%20in%20progress-red)
 
 _Progressive disclosure for code exploration._
@@ -29,7 +30,7 @@ The right unit is the **chunk** — a function, a class, a heading section — a
 
 1. **Orient** — `file-skeleton` returns every function signature and its line range, without bodies. One call, near-zero context cost.
 2. **Zoom** — `read-chunk <file> <line>` returns exactly the chunk enclosing that line. The agent pays only for what it reads.
-3. **Search** — `search-lexical <query>` uses ripgrep under the hood but returns the **full function body** surrounding each match — not just the matching line.
+3. **Search** — `search-lexical <query>` uses ripgrep under the hood but returns a **compact chunk list** (signature + line range per match) rather than raw grep output. Drill into any entry with `read-chunk`.
 
 The same principle applies when results would be too large: instead of truncating, `garbell` returns a directory-grouped summary — symbol counts per folder, file lists — so the agent knows exactly where to drill next rather than getting a wall of partial output. Progressive disclosure is the name of the game, after all.
 

@@ -15,10 +15,39 @@ import (
 
 const chunkBodyMaxLines = 100
 
-// SearchLexical uses `rg` to find matches, determines the enclosing chunk,
-// and returns the deduplicated chunk bodies. When the estimated output would
-// exceed the line threshold it returns a directory-grouped summary instead.
-func SearchLexical(workspacePath, query string) ([]string, error) {
+// maxSummaryChunks returns the cap for SearchLexical compact output before falling back
+// to a directory-grouped overview. Overridable via GARBELL_MAX_SUMMARY_CHUNKS.
+func maxSummaryChunks() int {
+	if v := os.Getenv("GARBELL_MAX_SUMMARY_CHUNKS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 80
+}
+
+// formatChunkSummary formats a slice of chunks as a compact, grouped-by-file listing.
+// One line per chunk: "  <start>-<end>: <sig>". Used by SearchLexical and SearchRelated.
+func formatChunkSummary(chunks []models.Chunk) string {
+	var sb strings.Builder
+	prevFile := ""
+	for _, c := range chunks {
+		if c.File != prevFile {
+			if prevFile != "" {
+				sb.WriteString("\n")
+			}
+			sb.WriteString(c.File + ":\n")
+			prevFile = c.File
+		}
+		sb.WriteString(fmt.Sprintf("  %d-%d: %s\n", c.Start, c.End, c.Sig))
+	}
+	sb.WriteString("\nUse `read-chunk <file> <line>` to read any chunk's full body.")
+	return sb.String()
+}
+
+// collectMatchingChunks runs rg for query and returns the deduplicated set of
+// enclosing chunks, preserving rg match order. Used by SearchLexical and SearchRelated.
+func collectMatchingChunks(workspacePath, query string) ([]models.Chunk, error) {
 	cmd := exec.Command("rg", "-n", "-e", query)
 	cmd.Dir = workspacePath
 
@@ -29,8 +58,7 @@ func SearchLexical(workspacePath, query string) ([]string, error) {
 		return nil, nil // no matches
 	}
 
-	// Phase 1: collect unique matching chunks without reading file bodies.
-	seenChunks := make(map[string]bool)
+	seen := make(map[string]bool)
 	var matched []models.Chunk
 
 	for _, line := range strings.Split(out.String(), "\n") {
@@ -54,38 +82,39 @@ func SearchLexical(workspacePath, query string) ([]string, error) {
 		for _, chunk := range fileChunks {
 			if lineNum >= chunk.Start && lineNum <= chunk.End {
 				key := fmt.Sprintf("%s:%d-%d", chunk.File, chunk.Start, chunk.End)
-				if !seenChunks[key] {
-					seenChunks[key] = true
+				if !seen[key] {
+					seen[key] = true
 					matched = append(matched, chunk)
 				}
 				break
 			}
 		}
 	}
+	return matched, nil
+}
 
-	// Phase 2: estimate total output lines and check threshold.
-	estimated := 0
-	for _, c := range matched {
-		estimated += 1 + min(c.End-c.Start+1, chunkBodyMaxLines) // header + body
+// SearchLexical uses `rg` to find matches, determines the enclosing chunk,
+// and returns a compact grouped-by-file summary (sig + line range per chunk).
+// When results exceed maxSummaryChunks it falls back to a directory-grouped overview.
+// Use `read-chunk <file> <line>` to fetch a specific chunk's full body.
+func SearchLexical(workspacePath, query string) ([]string, error) {
+	matched, err := collectMatchingChunks(workspacePath, query)
+	if err != nil {
+		return nil, err
 	}
-	if estimated > maxLines() {
+	if len(matched) == 0 {
+		return nil, nil
+	}
+
+	if len(matched) > maxSummaryChunks() {
 		chunksByFile := make(map[string]int)
 		for _, c := range matched {
 			chunksByFile[c.File]++
 		}
-		return []string{lexicalOverflow(chunksByFile, len(matched), estimated)}, nil
+		return []string{lexicalOverflow(chunksByFile, len(matched), len(matched))}, nil
 	}
 
-	// Phase 3: read bodies.
-	var results []string
-	for _, c := range matched {
-		body, err := ReadChunkBody(workspacePath, c, chunkBodyMaxLines)
-		if err == nil {
-			header := fmt.Sprintf("// File: %s (L%d-L%d)\n", c.File, c.Start, c.End)
-			results = append(results, header+body)
-		}
-	}
-	return results, nil
+	return []string{formatChunkSummary(matched)}, nil
 }
 
 // ReadChunkBody reads the physical lines of code for a given chunk

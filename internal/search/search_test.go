@@ -297,8 +297,12 @@ func TestSearchLexical_ResultIncludesHeader(t *testing.T) {
 	if len(results) == 0 {
 		t.Fatal("expected result for 'return a + b'")
 	}
-	if !strings.HasPrefix(results[0], "// File:") {
-		t.Errorf("expected result to start with '// File:' header; got:\n%s", results[0])
+	// New compact format: "file.go:\n  start-end: sig\n..."
+	if !strings.Contains(results[0], ":\n") {
+		t.Errorf("expected compact file:chunk listing; got:\n%s", results[0])
+	}
+	if !strings.Contains(results[0], "read-chunk") {
+		t.Errorf("expected read-chunk hint in result; got:\n%s", results[0])
 	}
 }
 
@@ -324,9 +328,9 @@ func TestSearchLexical_Deduplication(t *testing.T) {
 
 func TestSearchLexical_OverflowSummary(t *testing.T) {
 	requireWorkspace(t)
-	t.Setenv("GARBELL_MAX_LINES", "1")
+	t.Setenv("GARBELL_MAX_SUMMARY_CHUNKS", "1")
 
-	// With threshold=1, any query returning 2+ chunks triggers overflow.
+	// With cap=1 chunk, any query returning 2+ chunks triggers the directory overview.
 	results, err := search.SearchLexical(testWorkspace, "func")
 	if err != nil {
 		t.Fatal(err)

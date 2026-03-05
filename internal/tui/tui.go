@@ -489,7 +489,7 @@ func printCommandHelp(cmd string) {
 	case "rc", "read-chunk":
 		fmt.Println("rc <filepath> <line_number>\n  Reads the complete source block (e.g. function body) enclosing the given line number.")
 	case "sl", "search-lexical":
-		fmt.Println("sl <query>\n  Full-text regex search. Returns the full enclosing chunk (function body) for every match.")
+		fmt.Println("sl <query>\n  Full-text regex search. Returns a compact chunk list (sig + line range per match). Use rc to read a body.")
 	case "fu", "find-usages":
 		fmt.Println("fu <symbol>\n  Finds exact usages of a symbol and returns only the calling function signatures.")
 	case "ei", "extract-interface":

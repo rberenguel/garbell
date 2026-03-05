@@ -227,7 +227,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Available commands:")
 	fmt.Println("  index                                  Generate the interval map chunk index")
-	fmt.Println("  search-lexical <query>                 Full-text search returning chunk bodies")
+	fmt.Println("  search-lexical <query>                 Full-text search; compact chunk list (use read-chunk for bodies)")
 	fmt.Println("  search-fuzzy <signature>               Fuzzy search for a symbol signature")
 	fmt.Println("  file-skeleton <filepath|dir>           View signatures and lines in a file or directory")
 	fmt.Println("  read-chunk <filepath> <line_number>    Read the chunk block surrounding a line")

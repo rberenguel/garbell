@@ -9,11 +9,17 @@ import (
 	"path/filepath"
 	"strings"
 
+	"garbell/internal/models"
 	"garbell/internal/semantic"
 )
 
-// SearchRelated expands the query using the PPMI thesaurus built during indexing,
-// then delegates to SearchLexical with the resulting expanded regex.
+// maxRelatedChunks caps SearchRelated output. Synonym expansion can match broadly;
+// we show the most relevant hits first (original query > synonyms) and note the rest.
+const maxRelatedChunks = 50
+
+// SearchRelated expands the query using the PPMI thesaurus, scores matching chunks
+// (original-query matches score higher than synonym-only matches), and returns the
+// top maxRelatedChunks results with a note if more were found.
 func SearchRelated(workspacePath, query string) ([]string, error) {
 	thesaurus, err := loadThesaurus(workspacePath)
 	if err != nil {
@@ -22,27 +28,72 @@ func SearchRelated(workspacePath, query string) ([]string, error) {
 
 	tokens := semantic.Tokenize(query)
 	if len(tokens) == 0 {
-		// Fall back to plain lexical search if the query tokenises to nothing.
 		return SearchLexical(workspacePath, query)
 	}
 
-	termSet := make(map[string]bool)
+	// Build synonym set (terms NOT already in the original query).
+	origSet := make(map[string]bool, len(tokens))
 	for _, tok := range tokens {
-		termSet[tok] = true
+		origSet[tok] = true
 	}
+	synSet := make(map[string]bool)
 	for _, tok := range tokens {
 		for _, syn := range thesaurus[tok] {
-			termSet[syn] = true
+			if !origSet[syn] {
+				synSet[syn] = true
+			}
 		}
 	}
 
-	terms := make([]string, 0, len(termSet))
-	for t := range termSet {
-		terms = append(terms, t)
+	// Pass 1: chunks matching the original query tokens (score 2).
+	origRegex := "(?i)(" + strings.Join(tokens, "|") + ")"
+	origChunks, err := collectMatchingChunks(workspacePath, origRegex)
+	if err != nil {
+		return nil, err
 	}
 
-	expanded := "(?i)(" + strings.Join(terms, "|") + ")"
-	return SearchLexical(workspacePath, expanded)
+	// Pass 2: chunks matching synonym-only terms (score 1).
+	var synChunks []models.Chunk
+	if len(synSet) > 0 {
+		synTerms := make([]string, 0, len(synSet))
+		for s := range synSet {
+			synTerms = append(synTerms, s)
+		}
+		synRegex := "(?i)(" + strings.Join(synTerms, "|") + ")"
+		synChunks, err = collectMatchingChunks(workspacePath, synRegex)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Merge: original matches first (higher relevance), then synonym-only additions.
+	seen := make(map[string]bool)
+	var ranked []models.Chunk
+	for _, c := range origChunks {
+		key := fmt.Sprintf("%s:%d-%d", c.File, c.Start, c.End)
+		if !seen[key] {
+			seen[key] = true
+			ranked = append(ranked, c)
+		}
+	}
+	for _, c := range synChunks {
+		key := fmt.Sprintf("%s:%d-%d", c.File, c.Start, c.End)
+		if !seen[key] {
+			seen[key] = true
+			ranked = append(ranked, c)
+		}
+	}
+
+	total := len(ranked)
+	if total > maxRelatedChunks {
+		ranked = ranked[:maxRelatedChunks]
+	}
+
+	result := formatChunkSummary(ranked)
+	if total > maxRelatedChunks {
+		result += fmt.Sprintf("\n... %d more chunks matched. Refine your query or use `search-lexical` for exact results.", total-maxRelatedChunks)
+	}
+	return []string{result}, nil
 }
 
 func loadThesaurus(workspacePath string) (map[string][]string, error) {
