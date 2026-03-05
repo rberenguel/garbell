@@ -4,7 +4,7 @@ description: Code indexing and search skill using the purely local, daemonless C
 allowed-tools: Bash(garbell *)
 ---
 
-# Cercle v2 Context Retrieval
+# Garbell Context Retrieval
 
 `garbell` is a completely local, zero-dependency Go binary built around `ripgrep` (`rg`).
 Output is pure, compact text—designed specifically for LLM contexts.
@@ -39,4 +39,5 @@ Invoke these via `~/.garbell/garbell <command> [args...]` from the root of a pro
 ## Errors
 
 - **Missing Index**: `open ~/.garbell/indexes/... no such file or directory`. Run `~/.garbell/garbell index`.
-- **Empty Results**: Be cautious with exact queries in `search-lexical`. If it's empty, try a broader term, or use `search-fuzzy` if you suspect the symbol exists but is spelled differently. 
+- **Empty Results**: Be cautious with exact queries in `search-lexical`. If it's empty, try a broader term, or use `search-fuzzy` if you suspect the symbol exists but is spelled differently.
+- **Important**: debrief the user of any errors or usability improvements you find in the tooling after using it. This will make it better.
