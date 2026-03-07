@@ -8,11 +8,17 @@ import (
 )
 
 // SearchSignature searches chunk signatures (not file bodies) for matches against a regex.
+// fileFilter (if non-empty) restricts results to files whose path matches the regex.
 // Answers: "find all functions/types with this shape" — no source file I/O required.
-func SearchSignature(workspacePath, pattern string) (string, error) {
+func SearchSignature(workspacePath, pattern, fileFilter string) (string, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return "", fmt.Errorf("invalid pattern: %w", err)
+	}
+
+	fileRe, err := compileFileFilter(fileFilter)
+	if err != nil {
+		return "", fmt.Errorf("invalid --file pattern: %w", err)
 	}
 
 	allChunks, err := loadAllChunks(workspacePath)
@@ -28,7 +34,7 @@ func SearchSignature(workspacePath, pattern string) (string, error) {
 	}
 	var matches []match
 	for _, c := range allChunks {
-		if re.MatchString(c.Sig) {
+		if re.MatchString(c.Sig) && matchesFileFilter(fileRe, c.File) {
 			matches = append(matches, match{c.File, c.Start, c.End, c.Sig})
 		}
 	}

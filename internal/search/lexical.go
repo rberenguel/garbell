@@ -46,8 +46,14 @@ func formatChunkSummary(chunks []models.Chunk) string {
 }
 
 // collectMatchingChunks runs rg for query and returns the deduplicated set of
-// enclosing chunks, preserving rg match order. Used by SearchLexical and SearchRelated.
-func collectMatchingChunks(workspacePath, query string) ([]models.Chunk, error) {
+// enclosing chunks, preserving rg match order. fileFilter (if non-empty) restricts
+// results to chunks whose file path matches the regex. Used by SearchLexical and SearchRelated.
+func collectMatchingChunks(workspacePath, query, fileFilter string) ([]models.Chunk, error) {
+	fileRe, err := compileFileFilter(fileFilter)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --file pattern: %w", err)
+	}
+
 	cmd := exec.Command("rg", "-n", "-e", query)
 	cmd.Dir = workspacePath
 
@@ -71,6 +77,9 @@ func collectMatchingChunks(workspacePath, query string) ([]models.Chunk, error) 
 			continue
 		}
 		relPath := parts[0]
+		if !matchesFileFilter(fileRe, relPath) {
+			continue
+		}
 		lineNum, err := strconv.Atoi(parts[1])
 		if err != nil {
 			continue
@@ -95,10 +104,11 @@ func collectMatchingChunks(workspacePath, query string) ([]models.Chunk, error) 
 
 // SearchLexical uses `rg` to find matches, determines the enclosing chunk,
 // and returns a compact grouped-by-file summary (sig + line range per chunk).
+// fileFilter (if non-empty) restricts results to files whose path matches the regex.
 // When results exceed maxSummaryChunks it falls back to a directory-grouped overview.
 // Use `read-chunk <file> <line>` to fetch a specific chunk's full body.
-func SearchLexical(workspacePath, query string) ([]string, error) {
-	matched, err := collectMatchingChunks(workspacePath, query)
+func SearchLexical(workspacePath, query, fileFilter string) ([]string, error) {
+	matched, err := collectMatchingChunks(workspacePath, query, fileFilter)
 	if err != nil {
 		return nil, err
 	}

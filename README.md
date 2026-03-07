@@ -3,7 +3,7 @@
 
 # garbell
 
-![Version](https://img.shields.io/badge/version-0.0.3-blue)
+![Version](https://img.shields.io/badge/version-0.0.4-blue)
 ![Work in progress](https://img.shields.io/badge/status-work%20in%20progress-red)
 
 _Progressive disclosure for code exploration._
@@ -46,6 +46,7 @@ Each command answers a distinct question:
 | ------------------------------------ | ---------------------------- |
 | _What exists and where?_             | `file-skeleton <path\|dir>`  |
 | _What does this do?_                 | `read-chunk <file> <line>`   |
+| _What is around this line?_          | `peek <file> <line> [r]`     |
 | _Where is X mentioned?_              | `search-lexical <query>`     |
 | _Who calls this?_                    | `find-usages <symbol>`       |
 | _What does this expose?_             | `extract-interface <file>`   |

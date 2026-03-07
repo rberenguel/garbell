@@ -20,7 +20,8 @@ const maxRelatedChunks = 50
 // SearchRelated expands the query using the PPMI thesaurus, scores matching chunks
 // (original-query matches score higher than synonym-only matches), and returns the
 // top maxRelatedChunks results with a note if more were found.
-func SearchRelated(workspacePath, query string) ([]string, error) {
+// fileFilter (if non-empty) restricts results to files whose path matches the regex.
+func SearchRelated(workspacePath, query, fileFilter string) ([]string, error) {
 	thesaurus, err := loadThesaurus(workspacePath)
 	if err != nil {
 		return nil, fmt.Errorf("ppmi.json not found — run 'index' first: %w", err)
@@ -28,7 +29,7 @@ func SearchRelated(workspacePath, query string) ([]string, error) {
 
 	tokens := semantic.Tokenize(query)
 	if len(tokens) == 0 {
-		return SearchLexical(workspacePath, query)
+		return SearchLexical(workspacePath, query, fileFilter)
 	}
 
 	// Build synonym set (terms NOT already in the original query).
@@ -47,7 +48,7 @@ func SearchRelated(workspacePath, query string) ([]string, error) {
 
 	// Pass 1: chunks matching the original query tokens (score 2).
 	origRegex := "(?i)(" + strings.Join(tokens, "|") + ")"
-	origChunks, err := collectMatchingChunks(workspacePath, origRegex)
+	origChunks, err := collectMatchingChunks(workspacePath, origRegex, fileFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +61,7 @@ func SearchRelated(workspacePath, query string) ([]string, error) {
 			synTerms = append(synTerms, s)
 		}
 		synRegex := "(?i)(" + strings.Join(synTerms, "|") + ")"
-		synChunks, err = collectMatchingChunks(workspacePath, synRegex)
+		synChunks, err = collectMatchingChunks(workspacePath, synRegex, fileFilter)
 		if err != nil {
 			return nil, err
 		}

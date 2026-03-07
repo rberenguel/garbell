@@ -236,11 +236,12 @@ func (r *REPL) execute(input string) {
 			fmt.Println("No workspace set.")
 			return
 		}
-		if len(args) < 2 {
-			fmt.Println("Usage: fs <filepath|dir>")
+		fileFilter, rest := tuiExtractFlag(args[1:], "file")
+		if len(rest) == 0 {
+			fmt.Println("Usage: fs <filepath|dir> [--file <regex>]")
 			return
 		}
-		skel, err := search.FileSkeleton(r.workspace, args[1])
+		skel, err := search.FileSkeleton(r.workspace, rest[0], fileFilter)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return
@@ -252,33 +253,44 @@ func (r *REPL) execute(input string) {
 			fmt.Println("No workspace set.")
 			return
 		}
-		if len(args) < 3 {
-			fmt.Println("Usage: rc <filepath> <line_number>")
+		unsafe, rest := tuiExtractBoolFlag(args[1:], "unsafe")
+		if len(rest) < 2 {
+			fmt.Println("Usage: rc <filepath> <line_number> [--unsafe]")
 			return
 		}
-		lineNum, err := strconv.Atoi(args[2])
+		lineNum, err := strconv.Atoi(rest[1])
 		if err != nil {
 			fmt.Println("Invalid line number")
 			return
 		}
-		body, err := search.ReadChunkBlock(r.workspace, args[1], lineNum)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			return
+		if lineNum == -1 {
+			body, err := search.ReadFullFile(r.workspace, rest[0], unsafe)
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				return
+			}
+			fmt.Print(body)
+		} else {
+			body, err := search.ReadChunkBlock(r.workspace, rest[0], lineNum)
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				return
+			}
+			fmt.Print(body)
 		}
-		fmt.Print(body)
 
 	case "sl":
 		if r.workspace == "" {
 			fmt.Println("No workspace set.")
 			return
 		}
-		if len(args) < 2 {
-			fmt.Println("Usage: sl <query>")
+		fileFilter, rest := tuiExtractFlag(args[1:], "file")
+		if len(rest) == 0 {
+			fmt.Println("Usage: sl <query> [--file <regex>]")
 			return
 		}
-		query := strings.Join(args[1:], " ")
-		bodies, err := search.SearchLexical(r.workspace, query)
+		query := strings.Join(rest, " ")
+		bodies, err := search.SearchLexical(r.workspace, query, fileFilter)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return
@@ -295,12 +307,12 @@ func (r *REPL) execute(input string) {
 			fmt.Println("No workspace set.")
 			return
 		}
-		if len(args) < 2 {
-			fmt.Println("Usage: fu <symbol>")
+		fileFilter, rest := tuiExtractFlag(args[1:], "file")
+		if len(rest) == 0 {
+			fmt.Println("Usage: fu <symbol> [--file <regex>]")
 			return
 		}
-		symbol := args[1]
-		sigs, err := search.FindUsages(r.workspace, symbol)
+		sigs, err := search.FindUsages(r.workspace, rest[0], fileFilter)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return
@@ -332,11 +344,12 @@ func (r *REPL) execute(input string) {
 			fmt.Println("No workspace set.")
 			return
 		}
-		if len(args) < 2 {
-			fmt.Println("Usage: ss <pattern>")
+		fileFilter, rest := tuiExtractFlag(args[1:], "file")
+		if len(rest) == 0 {
+			fmt.Println("Usage: ss <pattern> [--file <regex>]")
 			return
 		}
-		out, err := search.SearchSignature(r.workspace, args[1])
+		out, err := search.SearchSignature(r.workspace, rest[0], fileFilter)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return
@@ -348,13 +361,14 @@ func (r *REPL) execute(input string) {
 			fmt.Println("No workspace set.")
 			return
 		}
+		fileFilter, rest := tuiExtractFlag(args[1:], "file")
 		n := 10
-		if len(args) >= 2 {
-			if parsed, err := strconv.Atoi(args[1]); err == nil && parsed > 0 {
+		if len(rest) >= 1 {
+			if parsed, err := strconv.Atoi(rest[0]); err == nil && parsed > 0 {
 				n = parsed
 			}
 		}
-		results, err := search.LargestChunks(r.workspace, n)
+		results, err := search.LargestChunks(r.workspace, n, fileFilter)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return
@@ -430,12 +444,13 @@ func (r *REPL) execute(input string) {
 			fmt.Println("No workspace set.")
 			return
 		}
-		if len(args) < 2 {
-			fmt.Println("Usage: sr <query>")
+		fileFilter, rest := tuiExtractFlag(args[1:], "file")
+		if len(rest) == 0 {
+			fmt.Println("Usage: sr <query> [--file <regex>]")
 			return
 		}
-		query := strings.Join(args[1:], " ")
-		bodies, err := search.SearchRelated(r.workspace, query)
+		query := strings.Join(rest, " ")
+		bodies, err := search.SearchRelated(r.workspace, query, fileFilter)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return
@@ -447,26 +462,54 @@ func (r *REPL) execute(input string) {
 			}
 		}
 
+	case "pk":
+		if r.workspace == "" {
+			fmt.Println("No workspace set.")
+			return
+		}
+		if len(args) < 3 {
+			fmt.Println("Usage: pk <filepath> <line_number> [radius]")
+			return
+		}
+		lineNum, err := strconv.Atoi(args[2])
+		if err != nil {
+			fmt.Println("Invalid line number")
+			return
+		}
+		radius := 5
+		if len(args) >= 4 {
+			if r, err := strconv.Atoi(args[3]); err == nil && r > 0 {
+				radius = r
+			}
+		}
+		out, err := search.Peek(r.workspace, args[1], lineNum, radius)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+		fmt.Print(out)
+
 	case "help", "?":
 		if len(args) > 1 {
 			printCommandHelp(args[1])
 			return
 		}
 		fmt.Println("Commands:")
-		fmt.Println("  use <path>         Set workspace and load index")
-		fmt.Println("  index              Regenerate index for current workspace")
-		fmt.Println("  fs <path>          file-skeleton")
-		fmt.Println("  rc <file> <line>   read-chunk")
-		fmt.Println("  sl <query>         search-lexical")
-		fmt.Println("  fu <symbol>        find-usages")
-		fmt.Println("  ei <file>          extract-interface")
-		fmt.Println("  ss <pattern>       search-signature")
-		fmt.Println("  lc [n]             largest-chunks")
-		fmt.Println("  ca <file> <line>   callees")
-		fmt.Println("  dep <file>         dependents")
-		fmt.Println("  sf <sig>           search-fuzzy (Levenshtein signature match)")
-		fmt.Println("  sr <query>         search-related (PPMI co-occurrence expansion → lexical)")
-		fmt.Println("  exit, q            Quit REPL")
+		fmt.Println("  use <path>              Set workspace and load index")
+		fmt.Println("  index                   Regenerate index for current workspace")
+		fmt.Println("  fs <path>               file-skeleton  [--file <regex>]")
+		fmt.Println("  rc <file> <line>        read-chunk  (-1 for full file)  [--unsafe]")
+		fmt.Println("  pk <file> <line> [r]    peek (show lines around target, radius r, default 5)")
+		fmt.Println("  sl <query>              search-lexical  [--file <regex>]")
+		fmt.Println("  fu <symbol>             find-usages  [--file <regex>]")
+		fmt.Println("  ei <file>               extract-interface")
+		fmt.Println("  ss <pattern>            search-signature  [--file <regex>]")
+		fmt.Println("  lc [n]                  largest-chunks  [--file <regex>]")
+		fmt.Println("  ca <file> <line>        callees")
+		fmt.Println("  dep <file>              dependents")
+		fmt.Println("  sf <sig>                search-fuzzy (Levenshtein signature match)")
+		fmt.Println("  sr <query>              search-related (PPMI co-occurrence expansion → lexical)  [--file <regex>]")
+		fmt.Println("  exit, q                 Quit REPL")
 		fmt.Println("Type 'help <command>' for more info.")
 
 	case "exit", "q":
@@ -485,19 +528,21 @@ func printCommandHelp(cmd string) {
 	case "index":
 		fmt.Println("index\n  Regenerate the index for the current workspace.\n  Run this after making changes to the codebase.")
 	case "fs", "file-skeleton":
-		fmt.Println("fs <filepath|dir>\n  Returns the structural outline of a file or directory.\n  Shows line ranges and signatures for functions, classes, etc.")
+		fmt.Println("fs <filepath|dir> [--file <regex>]\n  Returns the structural outline of a file or directory.\n  --file filters directory results to files matching the regex.")
 	case "rc", "read-chunk":
-		fmt.Println("rc <filepath> <line_number>\n  Reads the complete source block (e.g. function body) enclosing the given line number.")
+		fmt.Println("rc <filepath> <line_number> [--unsafe]\n  Reads the complete source block enclosing the given line.\n  Use -1 as the line number to read the whole file.\n  Files over the line limit require --unsafe to read in full.")
+	case "pk", "peek":
+		fmt.Println("pk <filepath> <line_number> [radius]\n  Shows lines around the target line. Default radius: 5.\n  Works directly on the source file — no index needed.\n  Useful for inspecting context around a lexical match in a large function.")
 	case "sl", "search-lexical":
-		fmt.Println("sl <query>\n  Full-text regex search. Returns a compact chunk list (sig + line range per match). Use rc to read a body.")
+		fmt.Println("sl <query> [--file <regex>]\n  Full-text regex search. Returns a compact chunk list (sig + line range per match).\n  --file filters results to files matching the regex (e.g. --file '.*_test\\.go').\n  Use rc to read a body.")
 	case "fu", "find-usages":
-		fmt.Println("fu <symbol>\n  Finds exact usages of a symbol and returns only the calling function signatures.")
+		fmt.Println("fu <symbol> [--file <regex>]\n  Finds exact usages of a symbol and returns only the calling function signatures.\n  --file restricts callers to files matching the regex.")
 	case "ei", "extract-interface":
 		fmt.Println("ei <filepath>\n  Reads a source file and returns its imports/includes and exported public declarations.")
 	case "ss", "search-signature":
-		fmt.Println("ss <pattern>\n  Regex search strictly against function/class signatures in the index, not file bodies.")
+		fmt.Println("ss <pattern> [--file <regex>]\n  Regex search strictly against function/class signatures in the index, not file bodies.\n  --file restricts results to files matching the regex.")
 	case "lc", "largest-chunks":
-		fmt.Println("lc [n]\n  Returns the top 'n' largest chunks by line count in the workspace. Default 10.")
+		fmt.Println("lc [n] [--file <regex>]\n  Returns the top 'n' largest chunks by line count in the workspace. Default 10.\n  --file restricts to files matching the regex.")
 	case "ca", "callees":
 		fmt.Println("ca <filepath> <line_number>\n  Returns a list of function names called *within* the chunk enclosing the given line.")
 	case "dep", "dependents":
@@ -505,7 +550,7 @@ func printCommandHelp(cmd string) {
 	case "sf", "search-fuzzy":
 		fmt.Println("sf <signature>\n  Finds the closest matching function signature in the index using Levenshtein distance.")
 	case "sr", "search-related":
-		fmt.Println("sr <query>\n  Expands the query with co-occurring terms from the PPMI thesaurus built during 'index',\n  then runs an expanded lexical search. Useful for finding code related to a known term.")
+		fmt.Println("sr <query> [--file <regex>]\n  Expands the query with co-occurring terms from the PPMI thesaurus built during 'index',\n  then runs an expanded lexical search.\n  --file restricts results to files matching the regex.")
 	case "help", "?":
 		fmt.Println("help [command]\n  Shows this help message. Pass a command to see details.")
 	case "exit", "q":
@@ -523,7 +568,7 @@ func (r *REPL) refreshPaths() {
 	r.paths = paths
 }
 
-var commands = []string{"use", "index", "fs", "rc", "sl", "fu", "ei", "ss", "lc", "ca", "dep", "sf", "sr", "help", "exit", "q", "?"}
+var commands = []string{"use", "index", "fs", "rc", "pk", "sl", "fu", "ei", "ss", "lc", "ca", "dep", "sf", "sr", "help", "exit", "q", "?"}
 
 func (r *REPL) complete(input string) ([]string, string) {
 	// First check if workspace is loaded at all
@@ -543,7 +588,7 @@ func (r *REPL) complete(input string) ([]string, string) {
 
 	// Completing a file argument
 	cmd := parts[0]
-	isPathCommand := cmd == "fs" || cmd == "rc" || cmd == "ei" || cmd == "ca" || cmd == "dep"
+	isPathCommand := cmd == "fs" || cmd == "rc" || cmd == "pk" || cmd == "ei" || cmd == "ca" || cmd == "dep"
 
 	if !isPathCommand {
 		return nil, ""
@@ -582,4 +627,36 @@ func osCommonPrefix(strs []string) string {
 	}
 
 	return prefix
+}
+
+// tuiExtractFlag removes a named flag and its value from a REPL args slice.
+// Supports "--name value" and "--name=value" forms. Order-agnostic.
+func tuiExtractFlag(args []string, name string) (value string, rest []string) {
+	flag := "--" + name
+	result := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == flag && i+1 < len(args) {
+			value = args[i+1]
+			i++
+		} else if strings.HasPrefix(args[i], flag+"=") {
+			value = args[i][len(flag)+1:]
+		} else {
+			result = append(result, args[i])
+		}
+	}
+	return value, result
+}
+
+// tuiExtractBoolFlag removes a boolean flag from a REPL args slice.
+func tuiExtractBoolFlag(args []string, name string) (found bool, rest []string) {
+	flag := "--" + name
+	result := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == flag {
+			found = true
+		} else {
+			result = append(result, a)
+		}
+	}
+	return found, result
 }

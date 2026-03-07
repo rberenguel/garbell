@@ -22,6 +22,7 @@ Each command answers a distinct question about a codebase:
 | ------------------------------------ | ---------------------------- |
 | _What exists and where?_             | `file-skeleton <path>`       |
 | _What does this do?_                 | `read-chunk <file> <line>`   |
+| _What is around this line?_          | `peek <file> <line> [r]`     |
 | _Where is X mentioned?_              | `search-lexical <query>`     |
 | _Who calls this?_                    | `find-usages <symbol>`       |
 | _What does this expose?_             | `extract-interface <file>`   |
@@ -55,7 +56,7 @@ Re-run after modifying code. It is fast and safe to re-run at any time.
 
 ---
 
-### `file-skeleton <path>`
+### `file-skeleton <path> [--file <regex>]`
 
 Returns the structural outline of a file or directory: line ranges and function/class/type signatures extracted from the chunk map. Does not read file content at query time — it reads the index.
 
@@ -87,6 +88,16 @@ src/auth/token.go:
   24-39: func ParseToken(raw string) (Claims, error) {
 ```
 
+**`--file <regex>`** restricts directory results to files whose relative path matches the regex. Ignored when a single file is given.
+
+```bash
+# Only test files
+garbell file-skeleton src/ --file ".*_test\.go"
+
+# Only Python files in a mixed-language project
+garbell file-skeleton . --file ".*\.py"
+```
+
 When the output would exceed the line threshold, a directory summary is returned instead:
 
 ```
@@ -101,7 +112,7 @@ Use `file-skeleton <subdir>` to drill down.
 
 ---
 
-### `read-chunk <path> <line>`
+### `read-chunk <path> <line> [--unsafe]`
 
 Reads the complete source block (function, class, CSS rule, etc.) enclosing the given line number. Output is capped at 1000 lines.
 
@@ -109,13 +120,53 @@ Reads the complete source block (function, class, CSS rule, etc.) enclosing the 
 garbell read-chunk src/auth/login.go 25
 ```
 
-Use this after `file-skeleton` tells you the line range of the thing you want to read, or after a `search-lexical` result that was truncated.
+Use this after `file-skeleton` tells you the line range of the thing you want to read, or after a `search-lexical` result.
 
-**Known limitation:** line 1 and other module-scope lines (imports, top-level `const` blocks) are not inside any chunk. `read-chunk` will return an error for those lines. Use `extract-interface` or direct file reading instead.
+**Reading the whole file:** pass `-1` as the line number to read the entire file instead of a single chunk.
+
+```bash
+garbell read-chunk src/auth/login.go -1
+```
+
+If the file exceeds the safe line limit (`GARBELL_MAX_LINES`, default 500), a warning is returned instead of the content. Add `--unsafe` to force the read regardless — but consider using your native file-reading tool for very large files.
+
+```bash
+garbell read-chunk src/auth/login.go -1 --unsafe
+```
+
+**Known limitation:** module-scope lines (imports, top-level `const` blocks) are not inside any chunk. `read-chunk` returns an error for those lines. Use `extract-interface` or direct file reading instead.
 
 ---
 
-### `search-lexical <query>`
+### `peek <path> <line> [radius]`
+
+Shows `radius` lines above and below `line` from the raw source file (default radius: **5**). The target line is marked with `>>`. No index required — reads directly from the source.
+
+```bash
+garbell peek src/engine/loop.go 247
+garbell peek src/engine/loop.go 247 15
+```
+
+```
+src/engine/loop.go:247 (±5):
+     242:     for _, e := range pending {
+     243:         s.dispatch(e)
+     244:     }
+     245:
+     246:     frameStart := time.Now()
+>>   247:     s.render()
+     248:
+     249:     elapsed := time.Since(frameStart)
+     250:     if elapsed < s.targetFrameTime {
+     251:         time.Sleep(s.targetFrameTime - elapsed)
+     252:     }
+```
+
+Use `peek` instead of `read-chunk` when a lexical match is deep inside a large function and you only need a few lines of context — it avoids reading the whole chunk.
+
+---
+
+### `search-lexical <query> [--file <regex>]`
 
 Runs `rg -n -e <query>` across the workspace, maps every match to its enclosing chunk, deduplicates, and returns a **compact grouped-by-file listing** — one line per matching chunk showing its line range and signature. Use `read-chunk <file> <line>` to read the full body of any listed chunk.
 
@@ -125,6 +176,16 @@ The query is a **PCRE/Rust regex** — `|` alternation works directly, no escapi
 garbell search-lexical "handleLogin|handleLogout"
 garbell search-lexical "SELECT.*FROM users"
 garbell search-lexical "func.*Error\(\)"
+```
+
+**`--file <regex>`** restricts results to files whose relative path matches the regex:
+
+```bash
+# Only matches in test files
+garbell search-lexical "handleLogin" --file ".*_test\.go"
+
+# Only matches in a specific subsystem
+garbell search-lexical "parseConfig" --file "internal/config/.*"
 ```
 
 Example output:
@@ -140,13 +201,11 @@ src/middleware/auth.go:
 Use `read-chunk <file> <line>` to read any chunk's full body.
 ```
 
-When more than 80 chunks match, a directory-grouped overview is returned instead — narrow your query or use `file-skeleton` to explore.
-
-To search within a specific directory, pass the path as part of the query pattern or run `rg` directly for path filtering.
+When more than 80 chunks match, a directory-grouped overview is returned instead — narrow your query, add `--file`, or use `file-skeleton` to explore.
 
 ---
 
-### `search-related <query>`
+### `search-related <query> [--file <regex>]`
 
 An expanded search that uses the repository-specific **PPMI thesaurus** built during `index` to automatically widen the query before handing it off to `search-lexical`.
 
@@ -173,6 +232,9 @@ garbell search-related "authentication"
 
 garbell search-related "database connection"
 # Might expand to: (?i)(database|connection|pool|driver|query|transaction)
+
+# Restrict expanded results to a specific layer
+garbell search-related "authentication" --file ".*middleware.*"
 ```
 
 The output format is identical to `search-lexical` — a compact grouped-by-file chunk listing. Use `read-chunk` to read specific bodies.
@@ -199,12 +261,15 @@ func ParseToken(raw string) (Claims, error) {
 
 ---
 
-### `find-usages <symbol>`
+### `find-usages <symbol> [--file <regex>]`
 
 Searches for exact word-boundary matches of `symbol` using `rg -w`, maps each match to its enclosing chunk, and returns only the **calling function signatures** — not the call sites themselves. Efficient for impact analysis before refactoring.
 
 ```bash
 garbell find-usages ParseToken
+
+# Only callers in the middleware layer
+garbell find-usages ParseToken --file ".*middleware.*"
 ```
 
 ```
@@ -233,7 +298,7 @@ Language support:
 
 ---
 
-### `search-signature <pattern>`
+### `search-signature <pattern> [--file <regex>]`
 
 Searches chunk **signatures only** (not file bodies) for matches against a regex. No source file I/O — runs entirely against the in-memory index. Useful for finding functions by their structural shape rather than their content.
 
@@ -241,6 +306,9 @@ Searches chunk **signatures only** (not file bodies) for matches against a regex
 garbell search-signature "func.*Handler"
 garbell search-signature "func.*\(.*Context"
 garbell search-signature "class.*Repository"
+
+# Only in test files
+garbell search-signature "func Test" --file ".*_test\.go"
 ```
 
 ```
@@ -253,13 +321,16 @@ When there are too many matches, a directory-grouped count is returned instead.
 
 ---
 
-### `largest-chunks [n]`
+### `largest-chunks [n] [--file <regex>]`
 
 Returns the `n` largest chunks by line count, descending (default: 10). Instant answer to "where is the complexity in this codebase?" — useful as the first step when inheriting unfamiliar code.
 
 ```bash
 garbell largest-chunks
 garbell largest-chunks 5
+
+# Largest chunks in the renderer subsystem only
+garbell largest-chunks 10 --file ".*/renderer/.*"
 ```
 
 ```
@@ -312,19 +383,20 @@ Opens an interactive Read-Eval-Print Loop (REPL) for exploring the workspace. Th
 
 Within the REPL, commands have shorthand aliases to save typing:
 
-| Shorthand          | Full Command        |
-| ------------------ | ------------------- |
-| `fs <path>`        | `file-skeleton`     |
-| `rc <file> <line>` | `read-chunk`        |
-| `sl <query>`       | `search-lexical`    |
-| `fu <symbol>`      | `find-usages`       |
-| `ei <file>`        | `extract-interface` |
-| `ss <pattern>`     | `search-signature`  |
-| `lc [n]`           | `largest-chunks`    |
-| `ca <file> <line>` | `callees`           |
-| `dep <file>`       | `dependents`        |
-| `sf <sig>`         | `search-fuzzy`      |
-| `sr <query>`       | `search-related`    |
+| Shorthand              | Full Command        | Flags supported        |
+| ---------------------- | ------------------- | ---------------------- |
+| `fs <path>`            | `file-skeleton`     | `--file <regex>`       |
+| `rc <file> <line>`     | `read-chunk`        | `--unsafe` (with `-1`) |
+| `pk <file> <line> [r]` | `peek`              | —                      |
+| `sl <query>`           | `search-lexical`    | `--file <regex>`       |
+| `fu <symbol>`          | `find-usages`       | `--file <regex>`       |
+| `ei <file>`            | `extract-interface` | —                      |
+| `ss <pattern>`         | `search-signature`  | `--file <regex>`       |
+| `lc [n]`               | `largest-chunks`    | `--file <regex>`       |
+| `ca <file> <line>`     | `callees`           | —                      |
+| `dep <file>`           | `dependents`        | —                      |
+| `sf <sig>`             | `search-fuzzy`      | —                      |
+| `sr <query>`           | `search-related`    | `--file <regex>`       |
 
 Other REPL-specific commands:
 

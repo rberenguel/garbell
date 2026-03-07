@@ -17,7 +17,9 @@ import (
 
 // FileSkeleton returns line numbers and signatures for a file or, if given a directory,
 // all files under that directory from the chunk map.
-func FileSkeleton(workspacePath, relFilePath string) (string, error) {
+// fileFilter (if non-empty) restricts directory results to files whose path matches the regex.
+// fileFilter is ignored when relFilePath points directly to a file.
+func FileSkeleton(workspacePath, relFilePath, fileFilter string) (string, error) {
 	if filepath.IsAbs(relFilePath) {
 		if rel, err := filepath.Rel(workspacePath, relFilePath); err == nil {
 			relFilePath = rel
@@ -40,6 +42,11 @@ func FileSkeleton(workspacePath, relFilePath string) (string, error) {
 		return "", err
 	}
 
+	fileRe, err := compileFileFilter(fileFilter)
+	if err != nil {
+		return "", fmt.Errorf("invalid --file pattern: %w", err)
+	}
+
 	prefix := ""
 	if relFilePath != "." {
 		prefix = strings.TrimSuffix(relFilePath, "/") + "/"
@@ -48,7 +55,9 @@ func FileSkeleton(workspacePath, relFilePath string) (string, error) {
 	byFile := make(map[string][]models.Chunk)
 	for _, chunk := range allChunks {
 		if prefix == "" || strings.HasPrefix(chunk.File, prefix) {
-			byFile[chunk.File] = append(byFile[chunk.File], chunk)
+			if matchesFileFilter(fileRe, chunk.File) {
+				byFile[chunk.File] = append(byFile[chunk.File], chunk)
+			}
 		}
 	}
 
@@ -125,8 +134,60 @@ func ReadChunkBlock(workspacePath, relFilePath string, lineNum int) (string, err
 	return ReadChunkBody(workspacePath, *matchedChunk, 1000)
 }
 
+// ReadFullFile reads the entire content of a file.
+// If the file exceeds the safe line limit and unsafe is false, it returns a warning
+// message instead of the content. Pass unsafe=true to force reading regardless.
+func ReadFullFile(workspacePath, relFilePath string, unsafe bool) (string, error) {
+	if filepath.IsAbs(relFilePath) {
+		if rel, err := filepath.Rel(workspacePath, relFilePath); err == nil {
+			relFilePath = rel
+		}
+	}
+
+	absPath := filepath.Join(workspacePath, relFilePath)
+
+	// Count lines first.
+	{
+		f, err := os.Open(absPath)
+		if err != nil {
+			return "", err
+		}
+		scanner := bufio.NewScanner(f)
+		lineCount := 0
+		for scanner.Scan() {
+			lineCount++
+		}
+		f.Close()
+		if err := scanner.Err(); err != nil {
+			return "", err
+		}
+		limit := maxLines()
+		if lineCount > limit && !unsafe {
+			return fmt.Sprintf(
+				"File has %d lines (safe limit: %d).\n"+
+					"Reading the whole file at this size is likely not what you want — "+
+					"consider using your native file-reading tool instead.\n"+
+					"If you still want the full content, pass --unsafe.",
+				lineCount, limit,
+			), nil
+		}
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
 // FindUsages uses `rg -w` to find usages, maps to the Chunk Map, and returns only caller signatures.
-func FindUsages(workspacePath, symbol string) ([]string, error) {
+// fileFilter (if non-empty) restricts results to files whose path matches the regex.
+func FindUsages(workspacePath, symbol, fileFilter string) ([]string, error) {
+	fileRe, err := compileFileFilter(fileFilter)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --file pattern: %w", err)
+	}
+
 	cmd := exec.Command("rg", "-w", "-n", symbol)
 	cmd.Dir = workspacePath
 
@@ -156,6 +217,9 @@ func FindUsages(workspacePath, symbol string) ([]string, error) {
 		}
 
 		relPath := parts[0]
+		if !matchesFileFilter(fileRe, relPath) {
+			continue
+		}
 		lineNum, err := strconv.Atoi(parts[1])
 		if err != nil {
 			continue

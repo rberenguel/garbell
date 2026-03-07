@@ -6,12 +6,28 @@ import (
 )
 
 // LargestChunks returns the n largest chunks by line count, descending.
+// fileFilter (if non-empty) restricts results to files whose path matches the regex.
 // Answers: "where is the complexity in this codebase?"
-func LargestChunks(workspacePath string, n int) ([]string, error) {
+func LargestChunks(workspacePath string, n int, fileFilter string) ([]string, error) {
+	fileRe, err := compileFileFilter(fileFilter)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --file pattern: %w", err)
+	}
+
 	allChunks, err := loadAllChunks(workspacePath)
 	if err != nil {
 		return nil, err
 	}
+
+	// Apply file filter.
+	filtered := allChunks[:0]
+	for _, c := range allChunks {
+		if matchesFileFilter(fileRe, c.File) {
+			filtered = append(filtered, c)
+		}
+	}
+	allChunks = filtered
+
 	if len(allChunks) == 0 {
 		return nil, nil
 	}

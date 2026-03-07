@@ -130,7 +130,7 @@ func requireWorkspace(t *testing.T) {
 func TestFileSkeleton_File(t *testing.T) {
 	requireWorkspace(t)
 
-	out, err := search.FileSkeleton(testWorkspace, "hello.go")
+	out, err := search.FileSkeleton(testWorkspace, "hello.go", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestFileSkeleton_File(t *testing.T) {
 func TestFileSkeleton_File_LineFormat(t *testing.T) {
 	requireWorkspace(t)
 
-	out, err := search.FileSkeleton(testWorkspace, "hello.go")
+	out, err := search.FileSkeleton(testWorkspace, "hello.go", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestFileSkeleton_File_LineFormat(t *testing.T) {
 func TestFileSkeleton_File_CorrectLineNumbers(t *testing.T) {
 	requireWorkspace(t)
 
-	out, err := search.FileSkeleton(testWorkspace, "hello.go")
+	out, err := search.FileSkeleton(testWorkspace, "hello.go", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestFileSkeleton_File_CorrectLineNumbers(t *testing.T) {
 func TestFileSkeleton_NonExistentFile(t *testing.T) {
 	requireWorkspace(t)
 
-	_, err := search.FileSkeleton(testWorkspace, "nonexistent.go")
+	_, err := search.FileSkeleton(testWorkspace, "nonexistent.go", "")
 	if err == nil {
 		t.Error("expected an error for a nonexistent file, got nil")
 	}
@@ -185,7 +185,7 @@ func TestFileSkeleton_NonExistentFile(t *testing.T) {
 func TestFileSkeleton_Directory(t *testing.T) {
 	requireWorkspace(t)
 
-	out, err := search.FileSkeleton(testWorkspace, ".")
+	out, err := search.FileSkeleton(testWorkspace, ".", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestFileSkeleton_DirectoryOverflow(t *testing.T) {
 	requireWorkspace(t)
 	t.Setenv("GARBELL_MAX_LINES", "1")
 
-	out, err := search.FileSkeleton(testWorkspace, ".")
+	out, err := search.FileSkeleton(testWorkspace, ".", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +211,22 @@ func TestFileSkeleton_DirectoryOverflow(t *testing.T) {
 	}
 	if !strings.Contains(out, "file-skeleton") {
 		t.Errorf("expected drill-down hint, got:\n%s", out)
+	}
+}
+
+func TestFileSkeleton_DirectoryFileFilter(t *testing.T) {
+	requireWorkspace(t)
+
+	// Filter to .go files only — should see hello.go but not utils.js or main.js.
+	out, err := search.FileSkeleton(testWorkspace, ".", `.*\.go`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "hello.go") {
+		t.Errorf("expected hello.go in filtered skeleton; got:\n%s", out)
+	}
+	if strings.Contains(out, ".js") {
+		t.Errorf("expected no .js files in filtered skeleton; got:\n%s", out)
 	}
 }
 
@@ -258,12 +274,63 @@ func TestReadChunkBlock_ModuleScopeLine(t *testing.T) {
 	}
 }
 
+// --- ReadFullFile ---
+
+func TestReadFullFile_ReturnsContent(t *testing.T) {
+	requireWorkspace(t)
+
+	out, err := search.ReadFullFile(testWorkspace, "hello.go", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "func Greet") {
+		t.Errorf("expected full file content; got:\n%s", out)
+	}
+	if !strings.Contains(out, "package testpkg") {
+		t.Errorf("expected package declaration; got:\n%s", out)
+	}
+}
+
+func TestReadFullFile_OverLimitWithoutUnsafe(t *testing.T) {
+	requireWorkspace(t)
+	t.Setenv("GARBELL_MAX_LINES", "1")
+
+	out, err := search.ReadFullFile(testWorkspace, "hello.go", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should return a warning, not the file content.
+	if strings.Contains(out, "func Greet") {
+		t.Errorf("expected warning message, not file content; got:\n%s", out)
+	}
+	if !strings.Contains(out, "lines") {
+		t.Errorf("expected a line-count warning; got:\n%s", out)
+	}
+	if !strings.Contains(out, "--unsafe") {
+		t.Errorf("expected --unsafe hint in warning; got:\n%s", out)
+	}
+}
+
+func TestReadFullFile_OverLimitWithUnsafe(t *testing.T) {
+	requireWorkspace(t)
+	t.Setenv("GARBELL_MAX_LINES", "1")
+
+	out, err := search.ReadFullFile(testWorkspace, "hello.go", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With --unsafe, should return full content regardless.
+	if !strings.Contains(out, "func Greet") {
+		t.Errorf("expected full file content with --unsafe; got:\n%s", out)
+	}
+}
+
 // --- SearchLexical ---
 
 func TestSearchLexical_ReturnsMatchingChunk(t *testing.T) {
 	requireWorkspace(t)
 
-	results, err := search.SearchLexical(testWorkspace, "fmt.Sprintf")
+	results, err := search.SearchLexical(testWorkspace, "fmt.Sprintf", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +345,7 @@ func TestSearchLexical_ReturnsMatchingChunk(t *testing.T) {
 func TestSearchLexical_NoMatches(t *testing.T) {
 	requireWorkspace(t)
 
-	results, err := search.SearchLexical(testWorkspace, "xyznomatchstring")
+	results, err := search.SearchLexical(testWorkspace, "xyznomatchstring", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +357,7 @@ func TestSearchLexical_NoMatches(t *testing.T) {
 func TestSearchLexical_ResultIncludesHeader(t *testing.T) {
 	requireWorkspace(t)
 
-	results, err := search.SearchLexical(testWorkspace, "return a \\+ b")
+	results, err := search.SearchLexical(testWorkspace, "return a \\+ b", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +378,7 @@ func TestSearchLexical_Deduplication(t *testing.T) {
 
 	// Both UseGreet and UseGreetAgain call Greet — but they are different chunks.
 	// Searching for "Greet" should match many things; verify no duplicate chunk keys.
-	results, err := search.SearchLexical(testWorkspace, "Greet")
+	results, err := search.SearchLexical(testWorkspace, "Greet", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +398,7 @@ func TestSearchLexical_OverflowSummary(t *testing.T) {
 	t.Setenv("GARBELL_MAX_SUMMARY_CHUNKS", "1")
 
 	// With cap=1 chunk, any query returning 2+ chunks triggers the directory overview.
-	results, err := search.SearchLexical(testWorkspace, "func")
+	results, err := search.SearchLexical(testWorkspace, "func", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +417,7 @@ func TestSearchLexical_RegexAlternation(t *testing.T) {
 	requireWorkspace(t)
 
 	// Pipe alternation should work without escaping.
-	results, err := search.SearchLexical(testWorkspace, "Greet|Add")
+	results, err := search.SearchLexical(testWorkspace, "Greet|Add", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,12 +426,50 @@ func TestSearchLexical_RegexAlternation(t *testing.T) {
 	}
 }
 
+func TestSearchLexical_FileFilter_Matching(t *testing.T) {
+	requireWorkspace(t)
+
+	// Filter to .go files — should find Greet.
+	results, err := search.SearchLexical(testWorkspace, "Greet", `.*\.go`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected results when filtering to .go files")
+	}
+	if !strings.Contains(results[0], "hello.go") {
+		t.Errorf("expected hello.go in results; got:\n%s", results[0])
+	}
+}
+
+func TestSearchLexical_FileFilter_NoMatch(t *testing.T) {
+	requireWorkspace(t)
+
+	// Filter to .py files — workspace has none, should return nothing.
+	results, err := search.SearchLexical(testWorkspace, "Greet", `.*\.py`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected no results when filtering to .py files; got:\n%v", results)
+	}
+}
+
+func TestSearchLexical_FileFilter_InvalidRegex(t *testing.T) {
+	requireWorkspace(t)
+
+	_, err := search.SearchLexical(testWorkspace, "Greet", `[invalid`)
+	if err == nil {
+		t.Error("expected error for invalid --file regex")
+	}
+}
+
 // --- FindUsages ---
 
 func TestFindUsages_ReturnsCallers(t *testing.T) {
 	requireWorkspace(t)
 
-	sigs, err := search.FindUsages(testWorkspace, "Greet")
+	sigs, err := search.FindUsages(testWorkspace, "Greet", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +497,7 @@ func TestFindUsages_ReturnsCallers(t *testing.T) {
 func TestFindUsages_NoMatches(t *testing.T) {
 	requireWorkspace(t)
 
-	sigs, err := search.FindUsages(testWorkspace, "XyzNoSuchSymbol")
+	sigs, err := search.FindUsages(testWorkspace, "XyzNoSuchSymbol", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +511,7 @@ func TestFindUsages_OverflowSummary(t *testing.T) {
 	t.Setenv("GARBELL_MAX_LINES", "1")
 
 	// Greet is called in 2 functions; with threshold=1 it should overflow.
-	sigs, err := search.FindUsages(testWorkspace, "Greet")
+	sigs, err := search.FindUsages(testWorkspace, "Greet", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +527,7 @@ func TestFindUsages_Deduplication(t *testing.T) {
 	requireWorkspace(t)
 
 	// Each caller function should appear at most once.
-	sigs, err := search.FindUsages(testWorkspace, "Greet")
+	sigs, err := search.FindUsages(testWorkspace, "Greet", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +543,7 @@ func TestFindUsages_Deduplication(t *testing.T) {
 func TestFindUsages_FormatIsFilePlusSig(t *testing.T) {
 	requireWorkspace(t)
 
-	sigs, err := search.FindUsages(testWorkspace, "Greet")
+	sigs, err := search.FindUsages(testWorkspace, "Greet", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,12 +559,25 @@ func TestFindUsages_FormatIsFilePlusSig(t *testing.T) {
 	}
 }
 
+func TestFindUsages_FileFilter(t *testing.T) {
+	requireWorkspace(t)
+
+	// Filtering to .js files should find no callers of Greet (Go-only symbol).
+	sigs, err := search.FindUsages(testWorkspace, "Greet", `.*\.js`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sigs) != 0 {
+		t.Errorf("expected no usages in .js files; got: %v", sigs)
+	}
+}
+
 // --- SearchSignature ---
 
 func TestSearchSignature_MatchesBySig(t *testing.T) {
 	requireWorkspace(t)
 
-	out, err := search.SearchSignature(testWorkspace, `func.*int`)
+	out, err := search.SearchSignature(testWorkspace, `func.*int`, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,7 +589,7 @@ func TestSearchSignature_MatchesBySig(t *testing.T) {
 func TestSearchSignature_GroupedByFile(t *testing.T) {
 	requireWorkspace(t)
 
-	out, err := search.SearchSignature(testWorkspace, `func`)
+	out, err := search.SearchSignature(testWorkspace, `func`, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +602,7 @@ func TestSearchSignature_GroupedByFile(t *testing.T) {
 func TestSearchSignature_NoMatches(t *testing.T) {
 	requireWorkspace(t)
 
-	out, err := search.SearchSignature(testWorkspace, `XyzNoSuchPattern`)
+	out, err := search.SearchSignature(testWorkspace, `XyzNoSuchPattern`, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,7 +614,7 @@ func TestSearchSignature_NoMatches(t *testing.T) {
 func TestSearchSignature_InvalidPattern(t *testing.T) {
 	requireWorkspace(t)
 
-	_, err := search.SearchSignature(testWorkspace, `[invalid`)
+	_, err := search.SearchSignature(testWorkspace, `[invalid`, "")
 	if err == nil {
 		t.Error("expected error for invalid regex")
 	}
@@ -506,7 +624,7 @@ func TestSearchSignature_Overflow(t *testing.T) {
 	requireWorkspace(t)
 	t.Setenv("GARBELL_MAX_LINES", "1")
 
-	out, err := search.SearchSignature(testWorkspace, `func`)
+	out, err := search.SearchSignature(testWorkspace, `func`, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,12 +633,29 @@ func TestSearchSignature_Overflow(t *testing.T) {
 	}
 }
 
+func TestSearchSignature_FileFilter(t *testing.T) {
+	requireWorkspace(t)
+
+	// Filter to .go files — should find Add.
+	out, err := search.SearchSignature(testWorkspace, `func`, `.*\.go`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Add") {
+		t.Errorf("expected 'Add' in .go-only results; got:\n%s", out)
+	}
+	// JS functions should be absent.
+	if strings.Contains(out, ".js") {
+		t.Errorf("expected no .js entries; got:\n%s", out)
+	}
+}
+
 // --- LargestChunks ---
 
 func TestLargestChunks_ReturnsN(t *testing.T) {
 	requireWorkspace(t)
 
-	results, err := search.LargestChunks(testWorkspace, 2)
+	results, err := search.LargestChunks(testWorkspace, 2, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +667,7 @@ func TestLargestChunks_ReturnsN(t *testing.T) {
 func TestLargestChunks_SortedDescending(t *testing.T) {
 	requireWorkspace(t)
 
-	results, err := search.LargestChunks(testWorkspace, 10)
+	results, err := search.LargestChunks(testWorkspace, 10, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -553,7 +688,7 @@ func TestLargestChunks_SortedDescending(t *testing.T) {
 func TestLargestChunks_FormatIncludesFile(t *testing.T) {
 	requireWorkspace(t)
 
-	results, err := search.LargestChunks(testWorkspace, 1)
+	results, err := search.LargestChunks(testWorkspace, 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,17 +708,31 @@ func TestLargestChunks_FormatIncludesFile(t *testing.T) {
 func TestLargestChunks_DefaultsToAll(t *testing.T) {
 	requireWorkspace(t)
 
-	all, err := search.LargestChunks(testWorkspace, 0)
+	all, err := search.LargestChunks(testWorkspace, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	top10, err := search.LargestChunks(testWorkspace, 10)
+	top10, err := search.LargestChunks(testWorkspace, 10, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// With n=0 we should get all chunks; they should be >= 10 count (or equal if fewer exist).
 	if len(all) < len(top10) {
 		t.Errorf("n=0 returned fewer results (%d) than n=10 (%d)", len(all), len(top10))
+	}
+}
+
+func TestLargestChunks_FileFilter(t *testing.T) {
+	requireWorkspace(t)
+
+	results, err := search.LargestChunks(testWorkspace, 10, `.*\.go`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range results {
+		if strings.Contains(r, ".js") {
+			t.Errorf("expected no .js entries when filtered to .go; got: %q", r)
+		}
 	}
 }
 
@@ -691,5 +840,76 @@ func TestDependents_NoImporters(t *testing.T) {
 		if strings.Contains(r, "main.js") && !strings.HasPrefix(r, "main.js:") {
 			t.Errorf("unexpected dependent of main.js: %s", r)
 		}
+	}
+}
+
+// --- SearchRelated (file filter only — full semantic tests require ppmi.json) ---
+
+func TestSearchRelated_FileFilter_InvalidRegex(t *testing.T) {
+	requireWorkspace(t)
+
+	_, err := search.SearchRelated(testWorkspace, "Greet", `[invalid`)
+	// SearchRelated may fail with ppmi.json missing OR with an invalid filter error.
+	// Either way it must return a non-nil error — it must not silently succeed.
+	if err == nil {
+		t.Error("expected error for invalid --file regex in search-related")
+	}
+}
+
+// --- Peek ---
+
+func TestPeek_ShowsTargetLine(t *testing.T) {
+	requireWorkspace(t)
+
+	// Line 6 is inside Greet: "return fmt.Sprintf(...)".
+	out, err := search.Peek(testWorkspace, "hello.go", 6, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, ">>") {
+		t.Errorf("expected '>>' marker for target line; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Sprintf") {
+		t.Errorf("expected target line content; got:\n%s", out)
+	}
+}
+
+func TestPeek_RadiusIncludesNeighbours(t *testing.T) {
+	requireWorkspace(t)
+
+	// Line 9 starts Add. Radius 1 should also show line 8 (blank) and line 10.
+	out, err := search.Peek(testWorkspace, "hello.go", 9, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	// Header + 3 content lines (8, 9, 10).
+	if len(lines) < 4 {
+		t.Errorf("expected header + 3 lines with radius=1; got %d lines:\n%s", len(lines), out)
+	}
+}
+
+func TestPeek_ClampedAtFileStart(t *testing.T) {
+	requireWorkspace(t)
+
+	// Line 1 with a large radius should not panic or error.
+	out, err := search.Peek(testWorkspace, "hello.go", 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, ">>") {
+		t.Errorf("expected '>>' marker; got:\n%s", out)
+	}
+}
+
+func TestPeek_HeaderFormat(t *testing.T) {
+	requireWorkspace(t)
+
+	out, err := search.Peek(testWorkspace, "hello.go", 6, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out, "hello.go:6") {
+		t.Errorf("expected header starting with 'hello.go:6'; got:\n%s", out)
 	}
 }
